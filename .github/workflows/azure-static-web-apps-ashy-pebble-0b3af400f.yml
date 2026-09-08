@@ -1,46 +1,52 @@
-name: Azure Static Web Apps CI/CD
-
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
-    branches:
-      - main
-
-jobs:
   build_and_deploy_job:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
     name: Build and Deploy Job
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
           submodules: true
           lfs: false
-      - name: Build And Deploy
+
+      - name: Get Node version
+        id: get_node_version
+        shell: bash
+        run: |
+          node_raw_version=$(node -p "require('./package.json').engines.node")
+          node_sanitized_version=$(echo "$node_raw_version" | sed -E 's/[^0-9.]+//g')
+          echo "node_version=$node_sanitized_version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: ${{ steps.get_node_version.outputs.node_version }}
+          cache: yarn
+
+      - name: Install dependencies
+          run: yarn install
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Update version.json
+        run: |
+          VERSION=$(jq -r '.version' public/version.json)
+          SHORT_SHA="${GITHUB_SHA::7}"
+          echo "{\"version\": \"${VERSION}\", \"commit\": \"${SHORT_SHA}\"}" > out/version.json
+
+      - name: Prepare Static Web Apps output
+        run: cp staticwebapp.config.json out/
+
+      - name: Deploy prebuilt frontend
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ASHY_PEBBLE_0B3AF400F }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }} # Used for Github integrations (i.e. PR comments)
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
-          ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
-          # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
-          app_location: "/" # App source code path
-          api_location: "" # Api source code path - optional
-          output_location: "/out" # Built app content directory - optional
-          ###### End of Repository/Build Configurations ######
-
-  close_pull_request_job:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
-    runs-on: ubuntu-latest
-    name: Close Pull Request Job
-    steps:
-      - name: Close Pull Request
-        id: closepullrequest
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ASHY_PEBBLE_0B3AF400F }}
-          action: "close"
+          app_location: "out"
+          api_location: ""
+          output_location: ""
+          skip_app_build: true
