@@ -1,3 +1,15 @@
+name: Azure Static Web Apps CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - main
+
+jobs:
   build_and_deploy_job:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
@@ -25,12 +37,13 @@
           cache: yarn
 
       - name: Install dependencies
-          run: yarn install
+        run: yarn install
 
       - name: Build frontend
         run: npm run build
 
       - name: Update version.json
+        shell: bash
         run: |
           VERSION=$(jq -r '.version' public/version.json)
           SHORT_SHA="${GITHUB_SHA::7}"
@@ -50,3 +63,16 @@
           api_location: ""
           output_location: ""
           skip_app_build: true
+
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request Job
+
+    steps:
+      - name: Close Pull Request
+        id: closepullrequest
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ASHY_PEBBLE_0B3AF400F }}
+          action: "close"
